@@ -33,6 +33,8 @@ def extract_ciphertext_from_pdf(pdf_path):
         return ciphertext
     except ValueError as e:
         print("Error extracting ciphertext:", e)
+        print("Signature verification failed!")
+        exit (1)
         return None
 
 
@@ -42,6 +44,7 @@ def extract_public_key_from_pdf(pdf_path):
         trailer = PdfReader(pdf_path)
         # Access the custom field containing the public key
         public_key_str = trailer.Info.public_key[1:][:-1]
+        #public_key_str = public_key_str.replace('\\n', '\n') 
         print(public_key_str)
         
         # Decode the public key string
@@ -49,10 +52,12 @@ def extract_public_key_from_pdf(pdf_path):
         
         # Deserialize the public key from PEM format
         public_key = serialization.load_pem_public_key(public_key_pem, backend=default_backend())
-        
+
         return public_key
     except Exception as e:
         print("Error extracting public key:", e)
+        print("Signature verification failed!")
+        exit (1)
         return None
 
 
