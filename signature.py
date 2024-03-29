@@ -165,7 +165,7 @@ def extract_signature_and_key(txt_content):
 #####################________MAIN_FUNCTION_________###################
 
 # Path to the original PDF
-pdf_path = 'lorem3.pdf'
+pdf_path = 'lorem.pdf'
 txt_path = 'lorem.txt'
 
 choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\n")
@@ -189,6 +189,7 @@ if(choice == "1"):
         trailer = PdfReader(pdf_path)
         trailer.Info.hash = ciphertext.hex()  # Store the ciphertext as hexadecimal string
         trailer.Info.public_key = str_key(public_key)
+        PdfWriter(pdf_path, trailer=trailer).write()
         print("PDF signed successfully!")
     if(format == "2"):
         print("Generating keys...")
