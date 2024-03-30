@@ -57,7 +57,6 @@ def extract_ciphertext_from_pdf(pdf_path):
         print("Error extracting ciphertext:", e)
         print("Signature verification failed!")
         exit (1)
-        return None
 
 
 def extract_public_key_from_pdf(pdf_path):
@@ -80,7 +79,6 @@ def extract_public_key_from_pdf(pdf_path):
         print("Error extracting public key:", e)
         print("Signature verification failed!")
         exit (1)
-        return None
 
 
 # Generate RSA keys
@@ -142,19 +140,22 @@ def extract_signature_and_key(txt_content):
     public_key_end = txt_content.find('-----END PUBLIC KEY-----')
 
     if signature_start != -1 and signature_end != -1 and public_key_start != -1 and public_key_end != -1:
-        signature = bytes.fromhex(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip())
-
+        try:
+            signature = bytes.fromhex(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip())
+        except Exception as e:
+            print("Error loading signature:", e)
+            print("Signature verification failed!")
+            exit(1)
         # Extract the entire public key substring
         public_key_str = (txt_content[public_key_start + len('-----BEGIN PUBLIC KEY-----'):public_key_end]+'-----END PUBLIC KEY-----').strip()
-
-        print("Public key PEM:\n", public_key_str)  # Debugging print statement
 
         try:
             public_key = serialization.load_pem_public_key(public_key_str.encode('utf-8'), backend=default_backend())
             return signature, public_key
         except Exception as e:
             print("Error loading public key:", e)
-            return None, None
+            print("Signature verification failed!")
+            exit(1)
     else:
         print("Signature and/or public key not found in the text file.")  # Debugging print statement
         return None, None
@@ -197,6 +198,12 @@ if(choice == "1"):
     
         print("Creating hash...")
         txt_text = extract_text_from_txt(txt_path)
+        if(txt_text.find('\n\n-----BEGIN SIGNATURE-----\n') != -1):
+            txt_text = extract_signed_text_from_txt(txt_path)
+            f = open(txt_path, 'r+')
+            f.truncate(0)
+            f.write(txt_text)
+            print("Previous signature replaced...")
         
         if txt_text:
             # Hash the text
@@ -231,19 +238,19 @@ if(choice == "2"):
         except cryptography.exceptions.InvalidSignature:
             print("Signature verification failed!")
     if(format == "2"):
-        
-        print("Verifying signature...")
 
         txt_text = extract_text_from_txt(txt_path)
         if txt_text:
             signature, public_key = extract_signature_and_key(txt_text)
             if signature and public_key:
                 #Hash the text
+                print("Creating hash...")
                 txt_text = extract_signed_text_from_txt(txt_path)
                 hash_value = hashlib.sha256(txt_text.encode('utf-8')).digest()
                 
 
                 # Verify signature
+                print("Verifying signature...")
                 try:
                     verify(public_key,signature,hash_value)
                     print("Signature verified successfully!")
