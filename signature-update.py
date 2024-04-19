@@ -8,34 +8,13 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding
 import os
 
-# Function to extract text from a PDF file
-
-def extract_text_from_txt(txt_path):
-    try:
-        with open(txt_path, "r") as file:
-            text = file.read()
-    except FileNotFoundError:
-        print("File not found.")
-    except Exception as e:
-        print("An error occurred:", e)
-    return text
-
-def extract_signed_text_from_txt(txt_path):
-    try:
-        with open(txt_path, "r") as file:
-            text = file.read()
-            signature_start = text.find('\n\n-----BEGIN SIGNATURE-----\n')
-            text = text[:signature_start]
-    except FileNotFoundError:
-        print("File not found.")
-    except Exception as e:
-        print("An error occurred:", e)
-    return text
-
-
-# Function to extract ciphertext from the PDF metadata
-
 # Generate RSA keys
+
+def extract_rsa_private(key):
+    n = key.private_numbers().p * key.private_numbers().q
+    d = key.private_numbers().d
+    return n, d
+
 def key_gen():
     private_key = rsa.generate_private_key(
     public_exponent=65537,
@@ -66,6 +45,12 @@ def str_keys(private_key_pem):
     print("private:",private_key_pem.decode())
     
 
+def my_sign(private_key,hash_value):
+    # Encrypt the hash value with the public key
+    n_private, d = extract_rsa_private(private_key)
+    ciphertext = pow(int.from_bytes(hash_value,'big'),d,n_private)
+    return ciphertext
+
 def sign(private_key,hash_value):
     # Encrypt the hash value with the public key
     ciphertext = private_key.sign(
@@ -90,7 +75,7 @@ def verify(public_key,ciphertext,hash_value):
     )
     
 def save_signature_and_key(signature, public_key, file):  
-        file.write('\n\n-----BEGIN SIGNATURE-----\n')
+        file.write('-----BEGIN SIGNATURE-----\n')
         file.write(signature.hex())
         file.write('\n-----END SIGNATURE-----\n')
         file.write('\n-----BEGIN PUBLIC KEY-----\n')
@@ -129,55 +114,46 @@ def extract_signature_and_key(txt_content):
 
 #####################________MAIN_FUNCTION_________###################
 
-# Path to the original PDF
-txt_path = 'lorem.txt'
-
-
 choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\n")
 
 if(choice == "1"):
     
-    txt_path  = input("Choose file:\n")
-    txt_path_split= txt_path.split('.')
-    txt_key= txt_path_split[0] + '.pem' 
-    #print("path:",txt_key)
-    file_hash = open(txt_path,'r+')
-    hash= file_hash.read()
+    file_path = input("Choose file:\n")
+    file_path_split= file_path.split('.')
+    txt_key= file_path_split[0] + '.pem' 
     
+    if(os.path.isfile(txt_key)):
+        data_file = open(file_path,'r+')
+        file_content = data_file.read()
+    else:
+        print("File doesnt exist.")
+        exit()    
+
     print("Generating keys...")
     private_key, public_key=key_gen()
     
+    print("Creating hash...")    
+    signature_file = open(txt_key,'w')
+    hash_value = hashlib.sha256(file_content.encode('utf-8')).digest()
     
-    #print('public:"',str_key(public_key),'"private:"',str_keys(private_key),'"')
-    print("Creating hash...")
-    
-    file = open(txt_key,'w')
-    
-        # Hash the text
-    hash_value = hashlib.sha256( hash.encode('utf-8')).digest()
     print("Signing txt...")
     signature = sign(private_key, hash_value)
 
-        # Save signature and public key
-    save_signature_and_key(signature, public_key,  file)
+    save_signature_and_key(signature, public_key,  signature_file)
     print("Text file signed successfully!")
     
     
 if(choice == "2"):
-    txt_path = input("Choose file:\n")
-    txt_path_split= txt_path.split('.')
-    txt_key= txt_path_split[0] + '.pem' 
-    print("path:",txt_key)
-    
-   
-   
-   
+    file_path = input("Choose file:\n")
+    file_path_split= file_path.split('.')
+    txt_key= file_path_split[0] + '.pem' 
+    print("path:",txt_key)   
     
     if(os.path.isfile(txt_key)):
-        file = open(txt_key,'r+')
-        txt_text= file.read()
-        file_hash = open(txt_path,'r+')
-        hash= file_hash.read()
+        signature_file = open(txt_key,'r+')
+        txt_text= signature_file.read()
+        data_file = open(file_path,'r+')
+        file_content = data_file.read()
     else:
         print("file doesnt exist.")
         exit()
@@ -186,10 +162,9 @@ if(choice == "2"):
         signature, public_key = extract_signature_and_key(txt_text)
         if signature and public_key:
             #Hash the text
-            print("Creating hash...")
+            print("Creating hash...")            
             
-            
-            hash_value = hashlib.sha256(hash.encode('utf-8')).digest()
+            hash_value = hashlib.sha256(file_content.encode('utf-8')).digest()
             #signature2 = sign(private_key, hash_value)
             # Verify signature
             print("Verifying signature...")
