@@ -15,6 +15,11 @@ def extract_rsa_private(key):
     d = key.private_numbers().d
     return n, d
 
+def extract_rsa_public(key):
+    n = key.public_numbers().n
+    e = key.public_numbers().e
+    return n, e
+
 def key_gen():
     private_key = rsa.generate_private_key(
     public_exponent=65537,
@@ -49,34 +54,20 @@ def my_sign(private_key,hash_value):
     # Encrypt the hash value with the public key
     n_private, d = extract_rsa_private(private_key)
     ciphertext = pow(int.from_bytes(hash_value,'big'),d,n_private)
-    return ciphertext
+    return hex(ciphertext)[2:]
 
-def sign(private_key,hash_value):
-    # Encrypt the hash value with the public key
-    ciphertext = private_key.sign(
-    hash_value,
-    padding.PSS(
-        mgf=padding.MGF1(hashes.SHA256()),
-        salt_length=padding.PSS.MAX_LENGTH
-    ),
-    hashes.SHA256()
-    )
-    return ciphertext
-
-def verify(public_key,ciphertext,hash_value):
-    public_key.verify(
-        ciphertext,
-        hash_value,
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        hashes.SHA256()
-    )
+def my_verify(public_key,signature,hash_value):
+    n_public, e = extract_rsa_public(public_key)
+    new_hash = pow(int(signature,16),e,n_public)
+    if(int.from_bytes(hash_value,'big') == new_hash):
+        print("Signature verified successfully!")
+    else:
+        print("Signature verification FAILED!")
     
 def save_signature_and_key(signature, public_key, file):  
         file.write('-----BEGIN SIGNATURE-----\n')
-        file.write(signature.hex())
+        file.write(str(signature))
+        #file.write((signature.hex()))
         file.write('\n-----END SIGNATURE-----\n')
         file.write('\n-----BEGIN PUBLIC KEY-----\n')
         file.write(str_key(public_key))
@@ -90,20 +81,20 @@ def extract_signature_and_key(txt_content):
 
     if signature_start != -1 and signature_end != -1 and public_key_start != -1 and public_key_end != -1:
         try:
-            signature = bytes.fromhex(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip())
+            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip(),16))
         except Exception as e:
             print("Error loading signature:", e)
-            print("1Signature verification failed!")
+            print("Signature verification failed!")
             exit(1)
         # Extract the entire public key substring
         public_key_str = (txt_content[public_key_start + len('-----BEGIN PUBLIC KEY-----'):public_key_end]+'-----END PUBLIC KEY-----').strip()
 
         try:
             public_key = serialization.load_pem_public_key(public_key_str.encode('utf-8'), backend=default_backend())
-            return signature, public_key
+            return signature[2:], public_key
         except Exception as e:
             print("Error loading public key:", e)
-            print("2Signature verification failed!")
+            print("Signature verification failed!")
             exit(1)
     else:
         print("Signature and/or public key not found in the text file.")  # Debugging print statement
@@ -137,7 +128,7 @@ if(choice == "1"):
     hash_value = hashlib.sha256(file_content.encode('utf-8')).digest()
     
     print("Signing txt...")
-    signature = sign(private_key, hash_value)
+    signature = my_sign(private_key, hash_value)
 
     save_signature_and_key(signature, public_key,  signature_file)
     print("Text file signed successfully!")
@@ -146,8 +137,7 @@ if(choice == "1"):
 if(choice == "2"):
     file_path = input("Choose file:\n")
     file_path_split= file_path.split('.')
-    txt_key= file_path_split[0] + '.pem' 
-    print("path:",txt_key)   
+    txt_key= file_path_split[0] + '.pem'   
     
     if(os.path.isfile(txt_key)):
         signature_file = open(txt_key,'r+')
@@ -168,10 +158,7 @@ if(choice == "2"):
             #signature2 = sign(private_key, hash_value)
             # Verify signature
             print("Verifying signature...")
-            try:
-                verify(public_key,signature,hash_value)
-                print("Signature verified successfully!")
-            except cryptography.exceptions.InvalidSignature:
-                print("Signature verification failed!")
+            my_verify(public_key,signature,hash_value)
+                
                 
              
