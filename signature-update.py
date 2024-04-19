@@ -1,12 +1,12 @@
-import PyPDF2
-import cryptography
-from pdfrw import PdfReader, PdfWriter 
+import datetime
 import hashlib
+from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.x509.oid import NameOID
 import os
+import re
 
 # Generate RSA keys
 
@@ -39,15 +39,14 @@ def str_key(public_key):
     public_key_str = public_key_pem.decode('utf-8')
     return public_key_str
 
-def str_keys(private_key_pem):
+def str_keys(private_key):
     private_key_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     )
-
-        # Print the private key
-    print("private:",private_key_pem.decode())
+    private_key_str = private_key_pem.decode('utf-8')
+    return private_key_str
     
 
 def my_sign(private_key,hash_value):
@@ -63,6 +62,53 @@ def my_verify(public_key,signature,hash_value):
         print("Signature verified successfully!")
     else:
         print("Signature verification FAILED!")
+
+def my_verify_cert(public_key,certificate,hash_value):
+    n_public, e = extract_rsa_public(public_key)
+    new_hash = pow(int(certificate,16),e,n_public)
+    if(int.from_bytes(hash_value,'big') == new_hash):
+        print("Certificate verified successfully!")
+    else:
+        print("Certificate verification FAILED!")
+
+def generate_certificate():
+    private_key, public_key = key_gen()
+    subject = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
+        x509.NameAttribute(NameOID.COMMON_NAME, u"example.com"),
+    ])
+
+    # Create a self-signed certificate
+    certificate = x509.CertificateBuilder().subject_name(
+        subject
+    ).issuer_name(
+        subject
+    ).public_key(
+        private_key.public_key()
+    ).serial_number(
+        x509.random_serial_number()
+    ).not_valid_before(
+        datetime.datetime.utcnow()
+    ).not_valid_after(
+        # Certificate valid for 1 year
+        datetime.datetime.utcnow() + datetime.timedelta(days=365)
+    ).add_extension(
+        x509.BasicConstraints(ca=True, path_length=None),
+        critical=True,
+    ).add_extension(
+        x509.SubjectKeyIdentifier.from_public_key(private_key.public_key()),
+        critical=False,
+    )
+    
+    hash_value = hashlib.sha256(str(certificate).encode('utf-8')).digest()
+    certificate= my_sign(private_key, hash_value)
+
+
+
+    return private_key, certificate
     
 def save_signature_and_key(signature, public_key, file):  
         file.write('-----BEGIN SIGNATURE-----\n')
@@ -72,6 +118,15 @@ def save_signature_and_key(signature, public_key, file):
         file.write('\n-----BEGIN PUBLIC KEY-----\n')
         file.write(str_key(public_key))
         file.write('\n-----END PUBLIC KEY-----\n')
+        
+def save_certificate_key(public_key, file):  
+        file.write(str_keys(public_key))
+
+def save_certificate(certificate, file):  
+        file.write('-----BEGIN CERTIFICATE-----\n')
+        file.write(re.sub("(.{64})", "\\1\n", certificate, 0, re.DOTALL))
+        file.write('\n-----END CERTIFICATE-----\n')
+
 
 def extract_signature_and_key(txt_content):
     signature_start = txt_content.find('-----BEGIN SIGNATURE-----')
@@ -105,7 +160,7 @@ def extract_signature_and_key(txt_content):
 
 #####################________MAIN_FUNCTION_________###################
 
-choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\n")
+choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\nPress '3' for verification\n")
 
 if(choice == "1"):
     
@@ -159,6 +214,14 @@ if(choice == "2"):
             # Verify signature
             print("Verifying signature...")
             my_verify(public_key,signature,hash_value)
+
+if(choice == "3"):
+    CA_private_key, certificate = generate_certificate()
+    certificate_file = open("certificate.pem",'w')
+    cert_key_file = open("CA_key.pem",'w')
+    save_certificate_key(CA_private_key,cert_key_file)
+    #certificate_file.write(certificate)
+    save_certificate(certificate, certificate_file)
                 
                 
              
