@@ -5,6 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives.asymmetric import padding
 import os
 import re
 
@@ -58,9 +59,7 @@ def my_sign(private_key,hash_value):
 def my_verify(public_key,signature,hash_value):
     n_public, e = extract_rsa_public(public_key)
     new_hash = pow(int(signature,16),e,n_public)
-    print("signature:",signature)
-    print("\npublic_key:",str_key(public_key))
-    print("hash_value:",int.from_bytes(hash_value,'big'),"\nnew_hash:",new_hash)
+    
     if(int.from_bytes(hash_value,'big') == new_hash):
         print("Signature verified successfully!")
     else:
@@ -68,7 +67,7 @@ def my_verify(public_key,signature,hash_value):
 
 def my_hash(content):
     hash_algorithm = hashes.SHA256()
-    hasher = hashes.Hash(hash_algorithm)
+    hasher = hashes.Hash(hash_algorithm,default_backend())
     hasher.update(content.encode('utf-8'))
     hash_value = hasher.finalize()
     return hash_value
@@ -109,12 +108,10 @@ def generate_certificate():
     crt_input = input("Enter certificate filename:\n").split('.')
     crt_file= crt_input[0]
     
-    with open(crt_file +"_private_key.pem", "wb") as private_key_file:
-        private_key_file.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption()
-        ))
+    with open(crt_file +"_private_key.pem", "w") as private_key_file:
+        private_key_file.write('-----BEGIN PRIVATE KEY-----\n')
+        private_key_file.write(str_keys(private_key))
+        private_key_file.write('-----END PRIVATE KEY-----\n')
     print("Private key saved as:"+crt_file +"_private_key.pem")
     
     with open(crt_file +".pem", "wb") as certificate_file:
@@ -152,6 +149,30 @@ def extract_certificate(crt_name):
     # print(str_key(certificate.public_key()))
 
     return certificate.public_key()
+
+def verify_certificate(cert_path):
+    # Load the certificate
+    with open(cert_path, "rb") as cert_file:
+        cert_data = cert_file.read()
+        
+    cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+
+    # Verify the certificate signature using trusted certificates
+    try:
+        cert.public_key().verify(
+            cert.signature,
+            cert.tbs_certificate_bytes,
+            padding.PKCS1v15(),
+            cert.signature_hash_algorithm,
+        )
+        print("Certificate signature verified successfully.")
+    except Exception as e:
+        print("Certificate signature verification failed!", e)
+        return False
+
+    # Additional verification checks can be added here (e.g., expiry, revocation, chain validation)
+
+    return True
     
 def save_signature(signature, file):  
         file.write('-----BEGIN SIGNATURE-----\n')
@@ -190,32 +211,25 @@ def extract_signature(txt_content):
         print("Signature and/or public key not found in the text file.")  # Debugging print statement
         return None
 
-def extract_signature_and_key(txt_content):
-    signature_start = txt_content.find('-----BEGIN SIGNATURE-----')
-    signature_end = txt_content.find('-----END SIGNATURE-----')
-    public_key_start = txt_content.find('-----BEGIN PUBLIC KEY-----')
-    public_key_end = txt_content.find('-----END PUBLIC KEY-----')
 
-    if signature_start != -1 and signature_end != -1 and public_key_start != -1 and public_key_end != -1:
-        try:
-            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip('\n'),16))
-        except Exception as e:
-            print("Error loading signature:", e)
-            print("Signature verification failed!")
-            exit(1)
+def extract_key(txt_content):
+    public_key_start = txt_content.find('-----BEGIN PRIVATE KEY-----')
+    public_key_end = txt_content.find('-----END PRIVATE KEY-----')
+
+    if public_key_start != -1 and public_key_end != -1:
         # Extract the entire public key substring
-        public_key_str = (txt_content[public_key_start + len('-----BEGIN PUBLIC KEY-----'):public_key_end]+'-----END PUBLIC KEY-----').strip()
+        public_key_str = (txt_content[public_key_start + len('-----BEGIN PRIVATE KEY-----'):public_key_end]+'-----END PRIVATE KEY-----').strip()
 
         try:
-            public_key = serialization.load_pem_public_key(public_key_str.encode('utf-8'), backend=default_backend())
-            return signature[2:], public_key
+            public_key = serialization.load_pem_private_key(public_key_str.encode('utf-8'),password=None, backend=default_backend())
+            return public_key
         except Exception as e:
-            print("Error loading public key:", e)
+            print("Error loading private key:", e)
             print("Signature verification failed!")
             exit(1)
     else:
-        print("Signature and/or public key not found in the text file.")  # Debugging print statement
-        return None, None
+        print("Private key not found in the text file.")  # Debugging print statement
+        return None
   
 
 #####################________MAIN_FUNCTION_________###################
@@ -239,11 +253,15 @@ while(not exit_program):
         if(os.path.isfile(crt_path)):
             with open(crt_path,'r+') as data_crt:
                 crt_content = data_crt.read()
-            with open(private_path,'rb') as data_private:
-                private_content = data_private.read()
-                private_key = serialization.load_pem_private_key(private_content,password = None, backend=default_backend())
         else:
             print("Certificate file doesnt exist.")
+            exit()
+            
+        if(os.path.isfile(private_path)):
+            with open(private_path,'r+') as data_private:
+                private_content = data_private.read()
+        else:
+            print("Private key file doesnt exist.")
             exit()
         
         if(os.path.isfile(file_path)):
@@ -253,9 +271,11 @@ while(not exit_program):
             print("Data file doesnt exist.")
             exit()    
         
+        private_key = extract_key(private_content)
+        print(str_keys(private_key))
         print("Creating hash...")    
         with open("data.pem",'w') as signature_file:
-            hash_value = hashlib.sha256(file_content.encode('utf-8')).digest()
+            hash_value = my_hash(file_content)
             
             print("Signing txt...")
             signature = my_sign(private_key, hash_value)
@@ -282,7 +302,14 @@ while(not exit_program):
                 file_content = data_txt.read()
         else:
             print("Data file doesnt exist.")
-            exit()  
+            exit() 
+            
+        if(os.path.isfile(file_path)):
+            with open(file_path,'r+') as file_orig:
+                orig_content = file_orig.read()
+        else:
+            print("Data file doesnt exist.")
+            exit()   
             
         public_key = extract_certificate(crt_path)
         signature = extract_signature(file_content)
@@ -290,10 +317,11 @@ while(not exit_program):
         #Hash the text
         print("Creating hash...")            
                 
-        hash_value = hashlib.sha256(file_content.encode('utf-8')).digest()
+        hash_value = my_hash(orig_content)
         #signature2 = sign(private_key, hash_value)
         # Verify signature
         print("Verifying signature...")
+        verify_certificate(crt_path)
         my_verify(public_key,signature,hash_value)
         
     
