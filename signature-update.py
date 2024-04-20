@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import hashlib
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -63,13 +63,31 @@ def my_verify(public_key,signature,hash_value):
     else:
         print("Signature verification FAILED!")
 
-def my_verify_cert(public_key,certificate,hash_value):
-    n_public, e = extract_rsa_public(public_key)
-    new_hash = pow(int(certificate,16),e,n_public)
-    if(int.from_bytes(hash_value,'big') == new_hash):
-        print("Certificate verified successfully!")
-    else:
-        print("Certificate verification FAILED!")
+def my_verify_cert(private_key,certificate):
+    #n_private, d = extract_rsa_private(private_key)
+    #new_hash = pow(int(certificate,16),e,n_public)
+    certificate_bytes = certificate.encode('utf-8')
+    certificate = x509.load_pem_x509_certificate(certificate_bytes, default_backend())
+
+    # Now you can use 'certificate' as an x509.Certificate object
+    # Extract information from the certificate
+    subject = certificate.subject
+    issuer = certificate.issuer
+    serial_number = certificate.serial_number
+    not_valid_before = certificate.not_valid_before
+    not_valid_after = certificate.not_valid_after
+
+    # Print the extracted information
+    print("Subject:", subject)
+    print("Issuer:", issuer)
+    print("Serial Number:", serial_number)
+    print("Not Valid Before:", not_valid_before)
+    print("Not Valid After:", not_valid_after)
+    
+    #if(int.from_bytes(hash_value,'big') == new_hash):
+        #print("Certificate verified successfully!")
+    #else:
+        #print("Certificate verification FAILED!")
 
 def generate_certificate():
     private_key, public_key = key_gen()
@@ -81,6 +99,9 @@ def generate_certificate():
         x509.NameAttribute(NameOID.COMMON_NAME, u"example.com"),
     ])
 
+        # Set the expiration date for the certificate
+    expiration_date = datetime(2025, 12, 31)  # Set expiration to December 31, 2025
+
     # Create a self-signed certificate
     certificate = x509.CertificateBuilder().subject_name(
         subject
@@ -91,40 +112,68 @@ def generate_certificate():
     ).serial_number(
         x509.random_serial_number()
     ).not_valid_before(
-        datetime.datetime.utcnow()
+        datetime.utcnow()
     ).not_valid_after(
-        # Certificate valid for 1 year
-        datetime.datetime.utcnow() + datetime.timedelta(days=365)
-    ).add_extension(
-        x509.BasicConstraints(ca=True, path_length=None),
-        critical=True,
-    ).add_extension(
-        x509.SubjectKeyIdentifier.from_public_key(private_key.public_key()),
-        critical=False,
-    )
-    
-    hash_value = hashlib.sha256(str(certificate).encode('utf-8')).digest()
-    certificate= my_sign(private_key, hash_value)
+        expiration_date
+    ).sign(private_key, hashes.SHA256(), default_backend())
+
+    # Export the private key and certificate to files
+    with open("private_key.pem", "wb") as private_key_file:
+        private_key_file.write(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        ))
+
+    with open("certificate.pem", "wb") as certificate_file:
+        certificate_file.write(certificate.public_bytes(serialization.Encoding.PEM))
 
 
 
     return private_key, certificate
+
+def extract_certificate():
+    with open("certificate.pem", "rb") as cert_file:
+        cert_data = cert_file.read()
+
+    # Parse the certificate
+    certificate = x509.load_pem_x509_certificate(cert_data, default_backend())
+
+    # Extract information from the certificate
+    print("Subject:")
+    print(certificate.subject)
+
+    print("\nIssuer:")
+    print(certificate.issuer)
+
+    print("\nSerial Number:")
+    print(certificate.serial_number)
+
+    print("\nNot Valid Before:")
+    print(certificate.not_valid_before)
+
+    print("\nNot Valid After:")
+    print(certificate.not_valid_after)
+
+    print("\nPublic Key:")
+    print(certificate.public_key())
     
 def save_signature_and_key(signature, public_key, file):  
         file.write('-----BEGIN SIGNATURE-----\n')
         file.write(str(signature))
-        #file.write((signature.hex()))
+        #file.write(re.sub("(.{64})", "\\1\n", str(signature), 0, re.DOTALL)[:-1])
         file.write('\n-----END SIGNATURE-----\n')
         file.write('\n-----BEGIN PUBLIC KEY-----\n')
         file.write(str_key(public_key))
-        file.write('\n-----END PUBLIC KEY-----\n')
+        file.write('-----END PUBLIC KEY-----\n')
         
 def save_certificate_key(public_key, file):  
         file.write(str_keys(public_key))
 
 def save_certificate(certificate, file):  
         file.write('-----BEGIN CERTIFICATE-----\n')
-        file.write(re.sub("(.{64})", "\\1\n", certificate, 0, re.DOTALL))
+        #file.write(re.sub("(.{64})", "\\1\n", certificate, 0, re.DOTALL))
+        file.write(certificate)
         file.write('\n-----END CERTIFICATE-----\n')
 
 
@@ -136,7 +185,7 @@ def extract_signature_and_key(txt_content):
 
     if signature_start != -1 and signature_end != -1 and public_key_start != -1 and public_key_end != -1:
         try:
-            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip(),16))
+            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip('\n'),16))
         except Exception as e:
             print("Error loading signature:", e)
             print("Signature verification failed!")
@@ -160,7 +209,7 @@ def extract_signature_and_key(txt_content):
 
 #####################________MAIN_FUNCTION_________###################
 
-choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\nPress '3' for verification\n")
+choice = input("Choose action:\nPress '1' for signing\nPress '2' for verification\nPress '3' for creating a certificate\n")
 
 if(choice == "1"):
     
@@ -217,11 +266,8 @@ if(choice == "2"):
 
 if(choice == "3"):
     CA_private_key, certificate = generate_certificate()
-    certificate_file = open("certificate.pem",'w')
-    cert_key_file = open("CA_key.pem",'w')
-    save_certificate_key(CA_private_key,cert_key_file)
-    #certificate_file.write(certificate)
-    save_certificate(certificate, certificate_file)
+    extract_certificate()
+    
                 
                 
              
