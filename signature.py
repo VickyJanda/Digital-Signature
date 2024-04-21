@@ -61,9 +61,9 @@ def my_verify(public_key,signature,hash_value):
     new_hash = pow(int(signature,16),e,n_public)
     
     if(int.from_bytes(hash_value,'big') == new_hash):
-        print("Signature verified successfully!")
+        print("Signature verified successfully!\n")
     else:
-        print("Signature verification FAILED!")
+        print("Signature verification FAILED!\n")
 
 def my_hash(content):
     hash_algorithm = hashes.SHA256()
@@ -165,7 +165,7 @@ def verify_certificate(cert_path):
             padding.PKCS1v15(),
             cert.signature_hash_algorithm,
         )
-        print("Certificate signature verified successfully.")
+        print("Certificate signature verified successfully!")
     except Exception as e:
         print("Certificate signature verification failed!", e)
         return False
@@ -176,18 +176,8 @@ def verify_certificate(cert_path):
     
 def save_signature(signature, file):  
         file.write('-----BEGIN SIGNATURE-----\n')
-        file.write(str(signature))
-        file.write('\n-----END SIGNATURE-----\n')
-        
-def save_certificate_key(public_key, file):  
-        file.write(str_keys(public_key))
-
-def save_certificate(certificate, file):  
-        file.write('-----BEGIN CERTIFICATE-----\n')
-        #file.write(re.sub("(.{64})", "\\1\n", certificate, 0, re.DOTALL))
-        file.write(certificate)
-        file.write('\n-----END CERTIFICATE-----\n')
-
+        file.write(re.sub("(.{64})", "\\1\n", str(signature), 0, re.DOTALL))
+        file.write('-----END SIGNATURE-----\n')
 
 def extract_signature(txt_content):
     signature_start = txt_content.find('-----BEGIN SIGNATURE-----')
@@ -195,7 +185,7 @@ def extract_signature(txt_content):
 
     if signature_start != -1 and signature_end != -1:
         try:
-            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].strip('\n'),16))
+            signature = hex(int(txt_content[signature_start + len('-----BEGIN SIGNATURE-----'):signature_end].replace('\n',""),16))
         except Exception as e:
             print("Error loading signature:", e)
             print("Signature verification failed!")
@@ -260,13 +250,14 @@ while(not exit_program):
         
         print("Creating hash...")    
         with open("data.pem",'w') as signature_file:
+            signature_file.truncate(0)
             hash_value = my_hash(file_content)
             
             print("Signing txt...")
             signature = my_sign(private_key, hash_value)
             
             save_signature(signature, signature_file)
-            print("Text file signed successfully!")
+            print("Text file signed successfully!\n")
         
     if(choice == "3"):
         crt_name = input("Enter certificate name:\n").split('.')
@@ -283,8 +274,8 @@ while(not exit_program):
             exit()
         
         if(os.path.isfile(txt_key)):
-            with open(txt_key,'r+') as data_txt:
-                file_content = data_txt.read()
+            with open(txt_key,'r+') as data_pem:
+                file_content = data_pem.read()
         else:
             print("Data file doesnt exist.")
             exit() 
@@ -306,8 +297,10 @@ while(not exit_program):
         #signature2 = sign(private_key, hash_value)
         # Verify signature
         print("Verifying signature...")
-        verify_certificate(crt_path)
-        my_verify(public_key,signature,hash_value)
+        if(verify_certificate(crt_path)):
+            my_verify(public_key,signature,hash_value)
+        else:
+            print("Signature verification FAILED!\n")
         
     
 
