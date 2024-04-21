@@ -1,5 +1,4 @@
-from datetime import datetime
-import hashlib
+from datetime import datetime, timedelta
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
@@ -74,16 +73,27 @@ def my_hash(content):
 
 def generate_certificate():
     private_key, public_key = key_gen()
-    subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
-        x509.NameAttribute(NameOID.COMMON_NAME, u"example.com"),
-    ])
+    country = input("Enter the country name(2 character code): ")
+    state = input("Enter the state or province name: ")
+    locality = input("Enter the locality name: ")
+    organization = input("Enter the organization name: ")
+    common_name = input("Enter the common name: ")
+    try:
+        subject = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, country),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, state),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, locality),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization),
+            x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+        ])
+    except Exception as e:
+        print("Error:", e)
+        exit(-1)
+        
+    # Set the expiration date for the certificate
+    current_date = datetime.now()
+    expiration_date = current_date + timedelta(days=365)
 
-        # Set the expiration date for the certificate
-    expiration_date = datetime(2025, 12, 31)  # Set expiration to December 31, 2025
 
     # Create a self-signed certificate
     certificate = x509.CertificateBuilder().subject_name(
@@ -246,7 +256,7 @@ while(not exit_program):
             exit()    
         
         print("Creating hash...")    
-        with open("data.pem",'w') as signature_file:
+        with open(txt_key,'w') as signature_file:
             signature_file.truncate(0)
             hash_value = my_hash(file_content)
             
