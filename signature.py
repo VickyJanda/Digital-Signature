@@ -74,8 +74,6 @@ def my_hash(content):
 
 def generate_certificate():
     private_key, public_key = key_gen()
-    public_test = open("public.pem", "w")
-    public_test.write(str_key(public_key))
     subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
@@ -117,7 +115,7 @@ def generate_certificate():
     with open(crt_file +".pem", "wb") as certificate_file:
         certificate_file.write(certificate.public_bytes(serialization.Encoding.PEM))
         
-    print("Certificate saved as:"+crt_file +".pem")
+    print("Certificate saved as:"+crt_file +".pem\n")
 
 
     return private_key, certificate, crt_file+'.pem'
@@ -209,13 +207,12 @@ while(not exit_program):
     
     if(choice == "1"):
         CA_private_key, certificate,crt_name = generate_certificate()
-        extract_certificate(crt_name)
 
     if(choice == "2"):
         crt_name = input("Enter certificate name:\n").split('.')
         crt_path = crt_name[0] + '.pem'
         private_path = crt_name[0] + '_private_key.pem'
-        file_path = input("Choose file:\n")
+        file_path = input("Enter filename to sign:\n")
         file_path_split= file_path.split('.')
         txt_key = file_path_split[0] + '.pem' 
         
